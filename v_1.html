@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Dimension & DPI Converter</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+            color: #333;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+        
+        header {
+            background: linear-gradient(90deg, #2575fc, #6a11cb);
+            color: white;
+            padding: 25px 30px;
+            text-align: center;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .main-content {
+            display: flex;
+            flex-wrap: wrap;
+            padding: 30px;
+            gap: 30px;
+        }
+        
+        .upload-section {
+            flex: 1;
+            min-width: 300px;
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        }
+        
+        .preview-section {
+            flex: 2;
+            min-width: 400px;
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        }
+        
+        .section-title {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            color: #2575fc;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
+        }
+        
+        .upload-area {
+            border: 2px dashed #6a11cb;
+            border-radius: 10px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+        
+        .upload-area:hover {
+            background-color: #f8f6ff;
+            border-color: #2575fc;
+        }
+        
+        .upload-icon {
+            font-size: 50px;
+            color: #6a11cb;
+            margin-bottom: 15px;
+        }
+        
+        .dimensions-form {
+            margin-top: 25px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #444;
+        }
+        
+        input[type="number"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border 0.3s;
+        }
+        
+        input[type="number"]:focus {
+            border-color: #6a11cb;
+            outline: none;
+        }
+        
+        .dimensions-display {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        
+        .dimension-box {
+            flex: 1;
+            background: #f0f7ff;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #cce0ff;
+        }
+        
+        .dimension-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #2575fc;
+        }
+        
+        .dimension-label {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .btn {
+            display: inline-block;
+            background: linear-gradient(90deg, #6a11cb, #2575fc);
+            color: white;
+            border: none;
+            padding: 14px 25px;
+            font-size: 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+            text-align: center;
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .preview-container {
+            border: 1px solid #eee;
+            border-radius: 8px;
+            height: 400px;
+            overflow: auto;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f9f9f9;
+        }
+        
+        .preview-placeholder {
+            text-align: center;
+            color: #888;
+            padding: 40px;
+        }
+        
+        .preview-placeholder i {
+            font-size: 60px;
+            margin-bottom: 15px;
+            color: #ccc;
+        }
+        
+        .pdf-info {
+            background: #f0f7ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddeeff;
+        }
+        
+        .info-row:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+        
+        .info-label {
+            font-weight: 600;
+            color: #555;
+        }
+        
+        .info-value {
+            color: #2575fc;
+            font-weight: 500;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #777;
+            font-size: 0.9rem;
+            border-top: 1px solid #eee;
+        }
+        
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+            
+            .upload-section, .preview-section {
+                min-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>PDF Dimension & DPI Converter</h1>
+            <p class="subtitle">Upload a PDF, view dimensions in cm, and adjust DPI settings</p>
+        </header>
+        
+        <div class="main-content">
+            <div class="upload-section">
+                <h2 class="section-title">Upload & Settings</h2>
+                
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📄</div>
+                    <h3>Click to Upload PDF</h3>
+                    <p>or drag and drop your file here</p>
+                    <input type="file" id="fileInput" accept=".pdf" style="display: none;">
+                </div>
+                
+                <div class="dimensions-form">
+                    <div class="form-group">
+                        <label for="width">Width (cm)</label>
+                        <input type="number" id="width" min="1" step="0.1" placeholder="Enter width in cm">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="height">Height (cm)</label>
+                        <input type="number" id="height" min="1" step="0.1" placeholder="Enter height in cm">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="dpi">DPI (Dots Per Inch)</label>
+                        <input type="number" id="dpi" min="72" max="1200" value="300" placeholder="Enter DPI">
+                    </div>
+                    
+                    <div class="dimensions-display">
+                        <div class="dimension-box">
+                            <div class="dimension-value" id="currentWidth">--</div>
+                            <div class="dimension-label">Current Width (cm)</div>
+                        </div>
+                        <div class="dimension-box">
+                            <div class="dimension-value" id="currentHeight">--</div>
+                            <div class="dimension-label">Current Height (cm)</div>
+                        </div>
+                    </div>
+                    
+                    <button class="btn" id="convertBtn">Convert PDF</button>
+                </div>
+            </div>
+            
+            <div class="preview-section">
+                <h2 class="section-title">PDF Preview</h2>
+                
+                <div class="preview-container" id="previewContainer">
+                    <div class="preview-placeholder">
+                        <i>📄</i>
+                        <h3>PDF Preview</h3>
+                        <p>Upload a PDF file to see preview</p>
+                    </div>
+                </div>
+                
+                <div class="pdf-info">
+                    <div class="info-row">
+                        <span class="info-label">File Name:</span>
+                        <span class="info-value" id="fileName">--</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">File Size:</span>
+                        <span class="info-value" id="fileSize">--</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Pages:</span>
+                        <span class="info-value" id="pageCount">--</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Current DPI:</span>
+                        <span class="info-value" id="currentDpi">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>PDF Dimension & DPI Converter Tool | Convert your PDF files to specific dimensions and DPI</p>
+        </footer>
+    </div>
+
+    <script>
+        // Set up PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.worker.min.js';
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const fileInput = document.getElementById('fileInput');
+            const uploadArea = document.getElementById('uploadArea');
+            const previewContainer = document.getElementById('previewContainer');
+            const widthInput = document.getElementById('width');
+            const heightInput = document.getElementById('height');
+            const dpiInput = document.getElementById('dpi');
+            const convertBtn = document.getElementById('convertBtn');
+            const currentWidth = document.getElementById('currentWidth');
+            const currentHeight = document.getElementById('currentHeight');
+            const fileName = document.getElementById('fileName');
+            const fileSize = document.getElementById('fileSize');
+            const pageCount = document.getElementById('pageCount');
+            const currentDpi = document.getElementById('currentDpi');
+            
+            let currentPdf = null;
+            let currentPdfName = '';
+            
+            // Upload area click event
+            uploadArea.addEventListener('click', () => {
+                fileInput.click();
+            });
+            
+            // Drag and drop functionality
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.style.backgroundColor = '#f0f7ff';
+                uploadArea.style.borderColor = '#2575fc';
+            });
+            
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.style.backgroundColor = '';
+                uploadArea.style.borderColor = '#6a11cb';
+            });
+            
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.style.backgroundColor = '';
+                uploadArea.style.borderColor = '#6a11cb';
+                
+                if (e.dataTransfer.files.length) {
+                    fileInput.files = e.dataTransfer.files;
+                    handleFileSelect(e);
+                }
+            });
+            
+            // File input change event
+            fileInput.addEventListener('change', handleFileSelect);
+            
+            // Convert button click event
+            convertBtn.addEventListener('click', convertPdf);
+            
+            function handleFileSelect(e) {
+                const file = e.target.files[0];
+                
+                if (file && file.type === 'application/pdf') {
+                    currentPdfName = file.name;
+                    fileName.textContent = file.name;
+                    fileSize.textContent = (file.size / 1024).toFixed(2) + ' KB';
+                    
+                    const fileReader = new FileReader();
+                    
+                    fileReader.onload = function() {
+                        const typedarray = new Uint8Array(this.result);
+                        
+                        // Load the PDF
+                        pdfjsLib.getDocument(typedarray).promise.then(function(pdf) {
+                            currentPdf = pdf;
+                            pageCount.textContent = pdf.numPages;
+                            
+                            // Load and display the first page
+                            pdf.getPage(1).then(function(page) {
+                                const viewport = page.getViewport({ scale: 1.0 });
+                                
+                                // Convert from PDF points to cm (1 point = 1/72 inch, 1 inch = 2.54 cm)
+                                const widthInCm = (viewport.width / 72 * 2.54).toFixed(2);
+                                const heightInCm = (viewport.height / 72 * 2.54).toFixed(2);
+                                
+                                currentWidth.textContent = widthInCm + ' cm';
+                                currentHeight.textContent = heightInCm + ' cm';
+                                
+                                widthInput.value = widthInCm;
+                                heightInput.value = heightInCm;
+                                
+                                // Render the PDF page
+                                renderPdfPage(page);
+                            });
+                        });
+                    };
+                    
+                    fileReader.readAsArrayBuffer(file);
+                } else {
+                    alert('Please select a valid PDF file.');
+                }
+            }
+            
+            function renderPdfPage(page) {
+                const viewport = page.getViewport({ scale: 1.5 });
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+                
+                // Clear the preview container
+                previewContainer.innerHTML = '';
+                previewContainer.appendChild(canvas);
+                
+                // Render PDF page
+                const renderContext = {
+                    canvasContext: context,
+                    viewport: viewport
+                };
+                
+                page.render(renderContext);
+            }
+            
+            function convertPdf() {
+                if (!currentPdf) {
+                    alert('Please upload a PDF file first.');
+                    return;
+                }
+                
+                const newWidth = parseFloat(widthInput.value);
+                const newHeight = parseFloat(heightInput.value);
+                const newDpi = parseInt(dpiInput.value);
+                
+                if (isNaN(newWidth) || isNaN(newHeight) || isNaN(newDpi)) {
+                    alert('Please enter valid values for width, height, and DPI.');
+                    return;
+                }
+                
+                if (newWidth <= 0 || newHeight <= 0) {
+                    alert('Width and height must be positive values.');
+                    return;
+                }
+                
+                if (newDpi < 72 || newDpi > 1200) {
+                    alert('DPI must be between 72 and 1200.');
+                    return;
+                }
+                
+                // Update current dimensions display
+                currentWidth.textContent = newWidth.toFixed(2) + ' cm';
+                currentHeight.textContent = newHeight.toFixed(2) + ' cm';
+                currentDpi.textContent = newDpi;
+                
+                // In a real application, this is where you would send the PDF to a server
+                // for processing with the new dimensions and DPI
+                // For this demo, we'll just show a success message
+                
+                alert(`PDF conversion settings applied:\nWidth: ${newWidth} cm\nHeight: ${newHeight} cm\nDPI: ${newDpi}\n\nIn a real application, the PDF would now be processed with these settings.`);
+                
+                // Simulate processing
+                convertBtn.textContent = 'Processing...';
+                convertBtn.disabled = true;
+                
+                setTimeout(() => {
+                    convertBtn.textContent = 'Convert PDF';
+                    convertBtn.disabled = false;
+                    alert('PDF conversion completed successfully!');
+                }, 2000);
+            }
+        });
+    </script>
+</body>
+</html>
