@@ -192,13 +192,14 @@
         .preview-container {
             border: 1px solid #eee;
             border-radius: 8px;
-            height: 400px;
+            height: 500px;
             overflow: auto;
             margin-bottom: 20px;
             display: flex;
             align-items: center;
             justify-content: center;
             background: #f9f9f9;
+            position: relative;
         }
         
         .preview-placeholder {
@@ -337,6 +338,101 @@
             text-align: center;
             color: #155724;
         }
+        
+        .preview-controls {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+        
+        .preview-size-display {
+            font-weight: bold;
+            color: #2575fc;
+        }
+        
+        .preview-canvas-container {
+            position: relative;
+            display: inline-block;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            border: 1px solid #ddd;
+            background: white;
+        }
+        
+        .preview-canvas-container canvas {
+            display: block;
+        }
+        
+        .resize-handle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: #2575fc;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 10;
+        }
+        
+        .resize-handle.bottom-right {
+            bottom: -6px;
+            right: -6px;
+        }
+        
+        .resize-handle.bottom-left {
+            bottom: -6px;
+            left: -6px;
+        }
+        
+        .resize-handle.top-right {
+            top: -6px;
+            right: -6px;
+        }
+        
+        .resize-handle.top-left {
+            top: -6px;
+            left: -6px;
+        }
+        
+        .move-handle {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            cursor: move;
+            z-index: 5;
+        }
+        
+        .preview-bounds {
+            position: absolute;
+            border: 2px dashed #2575fc;
+            pointer-events: none;
+        }
+        
+        .fit-options {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .fit-option {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            background: #f0f7ff;
+            border-radius: 5px;
+            cursor: pointer;
+            border: 1px solid #cce0ff;
+            transition: all 0.3s;
+        }
+        
+        .fit-option.active {
+            background: #2575fc;
+            color: white;
+            border-color: #2575fc;
+        }
+        
+        .fit-option:hover {
+            background: #d4e5ff;
+        }
     </style>
 </head>
 <body>
@@ -420,6 +516,17 @@
             <div class="preview-section">
                 <h2 class="section-title">PDF Preview</h2>
                 
+                <div class="preview-controls">
+                    <span>Preview Size:</span>
+                    <span class="preview-size-display" id="previewSizeDisplay">--</span>
+                </div>
+                
+                <div class="fit-options">
+                    <div class="fit-option active" id="fitStretch">Stretch to Fit</div>
+                    <div class="fit-option" id="fitContain">Fit Inside</div>
+                    <div class="fit-option" id="fitCover">Fill Entire Area</div>
+                </div>
+                
                 <div class="preview-container" id="previewContainer">
                     <div class="preview-placeholder">
                         <i>📄</i>
@@ -493,12 +600,24 @@
             const finalWidth = document.getElementById('finalWidth');
             const finalHeight = document.getElementById('finalHeight');
             const finalDpi = document.getElementById('finalDpi');
+            const previewSizeDisplay = document.getElementById('previewSizeDisplay');
+            const fitStretch = document.getElementById('fitStretch');
+            const fitContain = document.getElementById('fitContain');
+            const fitCover = document.getElementById('fitCover');
             
             let currentPdf = null;
             let currentPdfName = '';
             let pdfData = null;
             let conversionSettings = null;
             let originalDimensions = null;
+            let previewCanvas = null;
+            let previewCanvasContainer = null;
+            let isResizing = false;
+            let isMoving = false;
+            let resizeHandle = null;
+            let startX, startY, startWidth, startHeight, startLeft, startTop;
+            let currentFitMode = 'stretch';
+            let currentPage = null;
             
             // Upload area click event
             uploadArea.addEventListener('click', () => {
@@ -537,6 +656,28 @@
             // Download button click event
             downloadBtn.addEventListener('click', downloadPdf);
             
+            // Input change events to update preview
+            widthInput.addEventListener('input', updatePreviewSize);
+            heightInput.addEventListener('input', updatePreviewSize);
+            
+            // Fit mode selection
+            fitStretch.addEventListener('click', () => setFitMode('stretch'));
+            fitContain.addEventListener('click', () => setFitMode('contain'));
+            fitCover.addEventListener('click', () => setFitMode('cover'));
+            
+            function setFitMode(mode) {
+                currentFitMode = mode;
+                
+                // Update active state
+                [fitStretch, fitContain, fitCover].forEach(el => el.classList.remove('active'));
+                document.getElementById(`fit${mode.charAt(0).toUpperCase() + mode.slice(1)}`).classList.add('active');
+                
+                // Re-render the preview with new fit mode
+                if (currentPage) {
+                    renderPdfPage(currentPage);
+                }
+            }
+            
             function handleFileSelect(e) {
                 const file = e.target.files[0];
                 
@@ -557,6 +698,7 @@
                             
                             // Load and display the first page
                             pdf.getPage(1).then(function(page) {
+                                currentPage = page;
                                 const viewport = page.getViewport({ scale: 1.0 });
                                 
                                 // Convert from PDF points to cm (1 point = 1/72 inch, 1 inch = 2.54 cm)
@@ -589,23 +731,237 @@
             }
             
             function renderPdfPage(page) {
-                const viewport = page.getViewport({ scale: 1.5 });
-                const canvas = document.createElement('canvas');
-                const context = canvas.getContext('2d');
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
-                
                 // Clear the preview container
                 previewContainer.innerHTML = '';
-                previewContainer.appendChild(canvas);
+                
+                // Create canvas container for resizing and moving
+                previewCanvasContainer = document.createElement('div');
+                previewCanvasContainer.className = 'preview-canvas-container';
+                
+                // Create canvas for rendering
+                previewCanvas = document.createElement('canvas');
+                previewCanvasContainer.appendChild(previewCanvas);
+                
+                // Add move handle
+                const moveHandle = document.createElement('div');
+                moveHandle.className = 'move-handle';
+                moveHandle.addEventListener('mousedown', initMove);
+                previewCanvasContainer.appendChild(moveHandle);
+                
+                // Add resize handles
+                const handles = [
+                    { position: 'bottom-right', cursor: 'nwse-resize' },
+                    { position: 'bottom-left', cursor: 'nesw-resize' },
+                    { position: 'top-right', cursor: 'nesw-resize' },
+                    { position: 'top-left', cursor: 'nwse-resize' }
+                ];
+                
+                handles.forEach(handle => {
+                    const handleEl = document.createElement('div');
+                    handleEl.className = `resize-handle ${handle.position}`;
+                    handleEl.style.cursor = handle.cursor;
+                    handleEl.addEventListener('mousedown', initResize);
+                    previewCanvasContainer.appendChild(handleEl);
+                });
+                
+                previewContainer.appendChild(previewCanvasContainer);
+                
+                // Calculate dimensions based on user input
+                const widthCm = parseFloat(widthInput.value) || parseFloat(originalDimensions.width);
+                const heightCm = parseFloat(heightInput.value) || parseFloat(originalDimensions.height);
+                
+                // Convert cm to pixels for display (assuming 96 DPI for screen display)
+                const widthPx = (widthCm / 2.54) * 96;
+                const heightPx = (heightCm / 2.54) * 96;
+                
+                // Set canvas container size
+                previewCanvasContainer.style.width = `${widthPx}px`;
+                previewCanvasContainer.style.height = `${heightPx}px`;
+                
+                // Update preview size display
+                previewSizeDisplay.textContent = `${widthCm} cm × ${heightCm} cm`;
+                
+                // Get original viewport dimensions
+                const originalViewport = page.getViewport({ scale: 1.0 });
+                const originalWidth = originalViewport.width;
+                const originalHeight = originalViewport.height;
+                
+                // Calculate scale based on fit mode
+                let scaleX = widthPx / originalWidth;
+                let scaleY = heightPx / originalHeight;
+                let scale, offsetX = 0, offsetY = 0;
+                
+                switch(currentFitMode) {
+                    case 'stretch':
+                        // Stretch to fill entire area (may distort)
+                        scale = 1;
+                        previewCanvas.width = widthPx;
+                        previewCanvas.height = heightPx;
+                        break;
+                    case 'contain':
+                        // Fit inside while maintaining aspect ratio (may have empty space)
+                        scale = Math.min(scaleX, scaleY);
+                        previewCanvas.width = originalWidth * scale;
+                        previewCanvas.height = originalHeight * scale;
+                        offsetX = (widthPx - previewCanvas.width) / 2;
+                        offsetY = (heightPx - previewCanvas.height) / 2;
+                        break;
+                    case 'cover':
+                        // Fill entire area while maintaining aspect ratio (may crop)
+                        scale = Math.max(scaleX, scaleY);
+                        previewCanvas.width = originalWidth * scale;
+                        previewCanvas.height = originalHeight * scale;
+                        offsetX = (widthPx - previewCanvas.width) / 2;
+                        offsetY = (heightPx - previewCanvas.height) / 2;
+                        break;
+                }
+                
+                // Position the canvas
+                previewCanvas.style.position = 'absolute';
+                previewCanvas.style.left = `${offsetX}px`;
+                previewCanvas.style.top = `${offsetY}px`;
+                previewCanvas.style.width = `${previewCanvas.width}px`;
+                previewCanvas.style.height = `${previewCanvas.height}px`;
+                
+                // Create viewport with calculated scale
+                const viewport = page.getViewport({ scale: scale });
                 
                 // Render PDF page
                 const renderContext = {
-                    canvasContext: context,
+                    canvasContext: previewCanvas.getContext('2d'),
                     viewport: viewport
                 };
                 
                 page.render(renderContext);
+            }
+            
+            function updatePreviewSize() {
+                if (!previewCanvasContainer || !currentPage) return;
+                
+                const widthCm = parseFloat(widthInput.value);
+                const heightCm = parseFloat(heightInput.value);
+                
+                if (isNaN(widthCm) || isNaN(heightCm)) return;
+                
+                // Convert cm to pixels for display (assuming 96 DPI for screen display)
+                const widthPx = (widthCm / 2.54) * 96;
+                const heightPx = (heightCm / 2.54) * 96;
+                
+                // Update container size
+                previewCanvasContainer.style.width = `${widthPx}px`;
+                previewCanvasContainer.style.height = `${heightPx}px`;
+                
+                // Update preview size display
+                previewSizeDisplay.textContent = `${widthCm} cm × ${heightCm} cm`;
+                
+                // Update current dimensions display
+                currentWidth.textContent = widthCm.toFixed(2) + ' cm';
+                currentHeight.textContent = heightCm.toFixed(2) + ' cm';
+                
+                // Re-render with new dimensions
+                renderPdfPage(currentPage);
+            }
+            
+            function initResize(e) {
+                isResizing = true;
+                resizeHandle = e.target;
+                startX = e.clientX;
+                startY = e.clientY;
+                startWidth = parseInt(document.defaultView.getComputedStyle(previewCanvasContainer).width, 10);
+                startHeight = parseInt(document.defaultView.getComputedStyle(previewCanvasContainer).height, 10);
+                
+                document.addEventListener('mousemove', resize);
+                document.addEventListener('mouseup', stopResize);
+                
+                e.preventDefault();
+            }
+            
+            function resize(e) {
+                if (!isResizing) return;
+                
+                let width = startWidth;
+                let height = startHeight;
+                
+                // Calculate new dimensions based on handle position
+                if (resizeHandle.classList.contains('bottom-right')) {
+                    width = startWidth + (e.clientX - startX);
+                    height = startHeight + (e.clientY - startY);
+                } else if (resizeHandle.classList.contains('bottom-left')) {
+                    width = startWidth - (e.clientX - startX);
+                    height = startHeight + (e.clientY - startY);
+                } else if (resizeHandle.classList.contains('top-right')) {
+                    width = startWidth + (e.clientX - startX);
+                    height = startHeight - (e.clientY - startY);
+                } else if (resizeHandle.classList.contains('top-left')) {
+                    width = startWidth - (e.clientX - startX);
+                    height = startHeight - (e.clientY - startY);
+                }
+                
+                // Apply minimum size constraints
+                width = Math.max(width, 50);
+                height = Math.max(height, 50);
+                
+                // Update container size
+                previewCanvasContainer.style.width = `${width}px`;
+                previewCanvasContainer.style.height = `${height}px`;
+                
+                // Convert pixels to cm for display (assuming 96 DPI for screen display)
+                const widthCm = (width / 96) * 2.54;
+                const heightCm = (height / 96) * 2.54;
+                
+                // Update input fields
+                widthInput.value = widthCm.toFixed(2);
+                heightInput.value = heightCm.toFixed(2);
+                
+                // Update preview size display
+                previewSizeDisplay.textContent = `${widthCm.toFixed(2)} cm × ${heightCm.toFixed(2)} cm`;
+                
+                // Update current dimensions display
+                currentWidth.textContent = widthCm.toFixed(2) + ' cm';
+                currentHeight.textContent = heightCm.toFixed(2) + ' cm';
+                
+                // Re-render with new dimensions
+                if (currentPage) {
+                    renderPdfPage(currentPage);
+                }
+            }
+            
+            function stopResize() {
+                isResizing = false;
+                resizeHandle = null;
+                document.removeEventListener('mousemove', resize);
+                document.removeEventListener('mouseup', stopResize);
+            }
+            
+            function initMove(e) {
+                isMoving = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                startLeft = previewCanvasContainer.offsetLeft;
+                startTop = previewCanvasContainer.offsetTop;
+                
+                document.addEventListener('mousemove', move);
+                document.addEventListener('mouseup', stopMove);
+                
+                e.preventDefault();
+            }
+            
+            function move(e) {
+                if (!isMoving) return;
+                
+                const deltaX = e.clientX - startX;
+                const deltaY = e.clientY - startY;
+                
+                // Update container position
+                previewCanvasContainer.style.left = `${startLeft + deltaX}px`;
+                previewCanvasContainer.style.top = `${startTop + deltaY}px`;
+                previewCanvasContainer.style.position = 'absolute';
+            }
+            
+            function stopMove() {
+                isMoving = false;
+                document.removeEventListener('mousemove', move);
+                document.removeEventListener('mouseup', stopMove);
             }
             
             function convertPdf() {
@@ -637,7 +993,8 @@
                 conversionSettings = {
                     width: newWidth,
                     height: newHeight,
-                    dpi: newDpi
+                    dpi: newDpi,
+                    fitMode: currentFitMode
                 };
                 
                 // Update displays
@@ -676,7 +1033,7 @@
                             finalDpi.textContent = newDpi + ' DPI';
                             conversionInfo.style.display = 'block';
                             
-                            alert(`PDF conversion settings applied successfully!\n\nExact Specifications:\n• Width: ${newWidth} cm\n• Height: ${newHeight} cm\n• DPI: ${newDpi}\n\nYou can now download the PDF with these exact settings.`);
+                            alert(`PDF conversion settings applied successfully!\n\nExact Specifications:\n• Width: ${newWidth} cm\n• Height: ${newHeight} cm\n• DPI: ${newDpi}\n• Fit Mode: ${currentFitMode}\n\nYou can now download the PDF with these exact settings.`);
                         }, 500);
                     }
                 }, 100);
@@ -736,19 +1093,37 @@
                         canvas.width = widthInPixels;
                         canvas.height = heightInPixels;
                         
-                        // Calculate scale to fit original content while maintaining DPI
-                        const scaleX = widthInPixels / originalViewport.width;
-                        const scaleY = heightInPixels / originalViewport.height;
-                        const scale = Math.min(scaleX, scaleY); // Maintain aspect ratio
+                        // Calculate scale based on fit mode
+                        const originalWidth = originalViewport.width;
+                        const originalHeight = originalViewport.height;
+                        
+                        let scaleX = widthInPixels / originalWidth;
+                        let scaleY = heightInPixels / originalHeight;
+                        let scale, offsetX = 0, offsetY = 0;
+                        
+                        switch(conversionSettings.fitMode) {
+                            case 'stretch':
+                                // Stretch to fill entire area
+                                scale = 1;
+                                break;
+                            case 'contain':
+                                // Fit inside while maintaining aspect ratio
+                                scale = Math.min(scaleX, scaleY);
+                                offsetX = (widthInPixels - (originalWidth * scale)) / 2;
+                                offsetY = (heightInPixels - (originalHeight * scale)) / 2;
+                                break;
+                            case 'cover':
+                                // Fill entire area while maintaining aspect ratio
+                                scale = Math.max(scaleX, scaleY);
+                                offsetX = (widthInPixels - (originalWidth * scale)) / 2;
+                                offsetY = (heightInPixels - (originalHeight * scale)) / 2;
+                                break;
+                        }
                         
                         const highResViewport = page.getViewport({ 
                             scale: scale,
                             dpi: targetDPI // Explicit DPI setting
                         });
-                        
-                        // Set canvas CSS for proper display
-                        canvas.style.width = widthInPixels + 'px';
-                        canvas.style.height = heightInPixels + 'px';
                         
                         // Configure context for high-quality rendering
                         context.imageSmoothingEnabled = true;
@@ -758,6 +1133,9 @@
                         // Clear canvas with white background
                         context.fillStyle = 'white';
                         context.fillRect(0, 0, canvas.width, canvas.height);
+                        
+                        // Apply offset for contain/cover modes
+                        context.translate(offsetX, offsetY);
                         
                         // Render page to high-resolution canvas
                         const renderContext = {
@@ -823,7 +1201,7 @@
                     downloadBtn.disabled = false;
                     
                     // Show success message
-                    alert(`PDF downloaded successfully with exact specifications!\n\n• Width: ${width} cm\n• Height: ${height} cm\n• DPI: ${dpi}\n\nCheck with DPI checker - it should show exactly ${dpi} DPI.`);
+                    alert(`PDF downloaded successfully with exact specifications!\n\n• Width: ${width} cm\n• Height: ${height} cm\n• DPI: ${dpi}\n• Fit Mode: ${conversionSettings.fitMode}\n\nCheck with DPI checker - it should show exactly ${dpi} DPI.`);
 
                 } catch (error) {
                     console.error('Error processing PDF:', error);
